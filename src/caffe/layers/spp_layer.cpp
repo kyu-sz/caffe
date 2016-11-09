@@ -17,29 +17,62 @@ template <typename Dtype>
 LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
       const int bottom_h, const int bottom_w, const SPPParameter spp_param) {
   LayerParameter pooling_param;
-  int num_bins = pow(2, pyramid_level);
+  int num_bins_h = pow(spp_param.fineness_h(), pyramid_level)
+                   * spp_param.base_bin_h();
+  int num_bins_w = pow(spp_param.fineness_w(), pyramid_level)
+                   * spp_param.base_bin_w();
 
-  // find padding and kernel size so that the pooling is
-  // performed across the entire image
-  int kernel_h = ceil(bottom_h / static_cast<double>(num_bins));
-  // remainder_h is the min number of pixels that need to be padded before
-  // entire image height is pooled over with the chosen kernel dimension
-  int remainder_h = kernel_h * num_bins - bottom_h;
-  // pooling layer pads (2 * pad_h) pixels on the top and bottom of the
-  // image.
-  int pad_h = (remainder_h + 1) / 2;
+  // Initially, the stride is assumed as same as kernel size, as described
+  // in the original work.
+  int kernel_h = ceil(bottom_h / static_cast<double>(num_bins_h));
+  int pad_h = 0;
+  // If overlapping ratio is specified, we allow modification to the stride
+  // but limiting the stride to be larger or equal than 1.
+  int stride_h = max(1,
+    kernel_h - static_cast<int>(bottom_h * spp_param.overlap_ratio_h()));
+  // However, there are situations when the resulting padding size becomes
+  // larger or equal to the kernel size.
+  // Here we adjust the stride to ensure the padding size is smaller than
+  // the kernel size.
+  for (; stride_h > 0; --stride_h) {
+    // find padding and kernel size so that the pooling is
+    // performed across the entire image
+    kernel_h = max(stride_h, bottom_h - (num_bins_h - 1) * stride_h);
+    // remainder_h is the min number of pixels that need to be padded before
+    // entire image height is pooled over with the chosen kernel dimension
+    int remainder_h = kernel_h + stride_h * (num_bins_h - 1) - bottom_h;
+    // pooling layer pads (2 * pad_h) pixels on the top and bottom of the
+    // image.
+    pad_h = (remainder_h + 1) / 2;
+
+    // the condition is satisfied.
+    if (pad_h < kernel_h) break;
+  }
+  CHECK_GT(stride_h, 0)
+    << "Unable to find a stride_h to satisfy that pad_h < kernel_h!"
+    << "(bottom_h=" << bottom_h << "\tnum_bins_h=" << num_bins_h << ")";
 
   // similar logic for width
-  int kernel_w = ceil(bottom_w / static_cast<double>(num_bins));
-  int remainder_w = kernel_w * num_bins - bottom_w;
-  int pad_w = (remainder_w + 1) / 2;
+  int kernel_w = ceil(bottom_w / static_cast<double>(num_bins_w));
+  int pad_w = 0;
+  int stride_w = max(1,
+    kernel_w - static_cast<int>(bottom_w * spp_param.overlap_ratio_w()));
+  for (; stride_w > 0; --stride_w) {
+    kernel_w = max(stride_w, bottom_w - (num_bins_w - 1) * stride_w);
+    int remainder_w = kernel_w + stride_w * (num_bins_w - 1) - bottom_w;
+    pad_w = (remainder_w + 1) / 2;
+    if (pad_w < kernel_w) break;
+  }
+  CHECK_GT(stride_w, 0)
+    << "Unable to find a stride_w to satisfy that pad_w < kernel_w!"
+    << "(bottom_w=" << bottom_w << "\tnum_bins_w=" << num_bins_w << ")";
 
   pooling_param.mutable_pooling_param()->set_pad_h(pad_h);
   pooling_param.mutable_pooling_param()->set_pad_w(pad_w);
   pooling_param.mutable_pooling_param()->set_kernel_h(kernel_h);
   pooling_param.mutable_pooling_param()->set_kernel_w(kernel_w);
-  pooling_param.mutable_pooling_param()->set_stride_h(kernel_h);
-  pooling_param.mutable_pooling_param()->set_stride_w(kernel_w);
+  pooling_param.mutable_pooling_param()->set_stride_h(stride_h);
+  pooling_param.mutable_pooling_param()->set_stride_w(stride_w);
 
   switch (spp_param.pool()) {
   case SPPParameter_PoolMethod_MAX:
@@ -85,15 +118,6 @@ void SPPLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   flatten_outputs_.clear();
   concat_bottom_vec_.clear();
 
-  if (pyramid_height_ == 1) {
-    // pooling layer setup
-    LayerParameter pooling_param = GetPoolingParam(0, bottom_h_, bottom_w_,
-        spp_param);
-    pooling_layers_.push_back(shared_ptr<PoolingLayer<Dtype> > (
-        new PoolingLayer<Dtype>(pooling_param)));
-    pooling_layers_[0]->SetUp(bottom, top);
-    return;
-  }
   // split layer output holders setup
   for (int i = 0; i < pyramid_height_; i++) {
     split_top_vec_.push_back(new Blob<Dtype>());

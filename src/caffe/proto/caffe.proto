@@ -1199,6 +1199,24 @@ message SPPParameter {
     CUDNN = 2;
   }
   optional Engine engine = 6 [default = DEFAULT];
+  // Number of vertical bins on the first pyramid level.
+  optional uint32 base_bin_h = 7 [default = 1];
+  // Number of horizontal bins on the first pyramid level.
+  optional uint32 base_bin_w = 8 [default = 1];
+  // Fineness of vertical division of bin per level.
+  optional uint32 fineness_h = 9 [default = 2];
+  // Fineness of horizontal division of bin per level.
+  optional uint32 fineness_w = 10 [default = 2];
+  // Ratio of overlapping length of vertical side of pooling kernels
+  // to the height of the input image.
+  // This is a suggestion value. The actual layer will not guarantee
+  // to have kernels vertically overlapping at exactly this ratio.
+  optional float overlap_ratio_h = 11 [default = 0];
+  // Ratio of overlapping length of horizontal side of pooling kernels
+  // to the width of the input image.
+  // This is a suggestion value. The actual layer will not guarantee
+  // to have kernels vertically overlapping at exactly this ratio.
+  optional float overlap_ratio_w = 12 [default = 0];
 }
 
 // DEPRECATED: use LayerParameter.
