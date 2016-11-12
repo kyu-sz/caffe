@@ -26,8 +26,8 @@ LayerParameter SPPLayer<Dtype>::GetPoolingParam(const int pyramid_level,
   // in the original work.
   int kernel_h = ceil(bottom_h / static_cast<double>(num_bins_h));
   int pad_h = 0;
-  // If overlapping ratio is specified, we allow modification to the stride
-  // but limiting the stride to be larger or equal than 1.
+  // If overlapping ratio is specified, we modify the stride but limit it
+  // to be larger or equal than 1.
   int stride_h = max(1,
     kernel_h - static_cast<int>(bottom_h * spp_param.overlap_ratio_h()));
   // However, there are situations when the resulting padding size becomes
